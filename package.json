@@ -1,0 +1,17 @@
+{
+  "name": "media-session-cutover",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node src/session_inventory.ts",
+    "test": "node --test src/session_inventory.test.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "typescript": "^5.7.2"
+  }
+}
