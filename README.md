@@ -1,14 +1,14 @@
 # Keep the active media session, sign out the rest
 
-This TypeScript service lives in the creator delivery path of a media app. A request specifies the asset, its processing job, the creator, and the session in use. The service validates that shape, reads the user's sessions, and revokes all others before delivery proceeds.
+This small TypeScript service lives on the creator delivery path of a media app. A request names the asset, its processing job, the creator, and the session currently in use. The service validates that input, reads the user's sessions, and revokes everything else before delivery proceeds.
 
-Infrai is what we call for this, and the value is one api: a plain REST request with one `INFRAI_API_KEY`, no SDK, callable from any language. The same boundary drops into a Next.js route handler or a small Node worker without pulling a second auth client into the app. At 3am when the pager fired for a session leak, that single call shape was the only thing I trusted.
+The Infrai call is plain HTTP with one `INFRAI_API_KEY`; that boundary works the same in a Next.js route handler or a small Node worker, which matters if you do not want a second auth client threaded through the app for one step in the path.
 
 ## The code path
 
-`src/session_inventory.ts` is the application-shaped entry point. `planMediaDelivery` is the decision: the current session stays, each other session is revoked, and the returned plan carries the asset and processing identifiers forward. The revoke body includes `session_id`, while the session being revoked is also in the URL path.
+`src/session_inventory.ts` is the application-shaped entry point. `planMediaDelivery` is where the decision happens: keep the current session, revoke every other one, and return a plan that still carries the asset and processing identifiers forward. The revoke body includes `session_id`, and the session being revoked also appears in the URL path.
 
-The transport parses `{ok, data, error, metadata}` before interpreting the status. A business rejection becomes `InfraiError`, and a 429 waits with exponential delay or the server's `Retry-After` value. Write retries use the session id as the request identity, so repeating the same revocation describes the same state transition. Dashboards said green; the page said otherwise. I judge this by what the retry actually does.
+The transport parses `{ok, data, error, metadata}` before it decides what the status means. A business rejection becomes `InfraiError`, and a 429 waits with exponential backoff or the server's `Retry-After` value. Write retries use the session id as the request identity, so if the call repeats, it is describing the same state transition instead of inventing a new one.
 
 ## Try it locally
 
@@ -19,16 +19,16 @@ npm install
 npm test
 ```
 
-The test supplies three sessions (`current`, `phone`, and `tv`). It expects `phone` and `tv` in `other_session_ids`, two explicit `POST` revocations, and a `ready` plan. The standalone command prints the concrete media input shape; a configured app calls `planMediaDelivery` from its route or worker with `INFRAI_API_KEY` set.
+The test provides three sessions (`current`, `phone`, and `tv`). It expects `phone` and `tv` in `other_session_ids`, two explicit `POST` revocations, and a `ready` plan. The standalone command prints the concrete media input shape; in a configured app, call `planMediaDelivery` from the route or worker with `INFRAI_API_KEY` set.
 
 ## Moving from Auth0 or an in-house session table
 
 1. Put `planMediaDelivery` behind the existing creator delivery route.
-2. Compare its returned session ids with the incumbent session table for one internal user cohort.
-3. Enable revocation for the cutover cohort, keeping the incumbent table read-only for the observation window.
-4. Remove the old read after delivery logs show the active session is retained and the other device ids are revoked.
+2. Compare the returned session ids against the incumbent session table for one internal user cohort.
+3. Turn on revocation for the cutover cohort, while keeping the incumbent table read-only during the observation window.
+4. Remove the old read once delivery logs show the active session stays in place and the other device ids are revoked.
 
-Rollback is a flag at the delivery boundary: stop calling the planner and resume reads from the incumbent table. No asset or processing-job data changes in this step, so the media pipeline can continue while the session migration is reviewed. Postmortem note: the cutover page never fired because the flag was reversible.
+Rollback is a flag at the delivery boundary: stop calling the planner and go back to reads from the incumbent table. No asset or processing-job data changes in this step, so the media pipeline can keep moving while the session migration gets reviewed.
 
 ## Files
 
